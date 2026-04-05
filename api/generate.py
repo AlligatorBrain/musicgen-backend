@@ -1,173 +1,144 @@
-import os
-import json
-import requests
-import hashlib
-
-_cache = {}
+from http.server import BaseHTTPRequestHandler
+import os, json, requests, hashlib
 
 HF_TOKEN = os.environ.get("HUGGINGFACE_API_TOKEN", "")
-HF_API_URL = "https://api-inference.huggingface.co/models/facebook/musicgen-small"
+HF_URL = "https://api-inference.huggingface.co/models/facebook/musicgen-small"
+_cache = {}
 
-def build_prompt(mode, texture, genre=None, scene=None):
-    base = {
-        "Deep Focus": "ambient piano minimal focus concentration",
-        "Writing Flow": "gentle piano ambient flowing creative writing",
-        "Scene Mood": "cinematic atmospheric emotional strings",
-        "Emotional Access": "soft piano emotional intimate vulnerable",
-        "Late-Night": "nocturnal ambient piano dark intimate",
-        "Worldbuilding": "epic atmospheric ambient orchestral",
-        "Idea Spark": "bright uplifting piano creative energetic",
-        "Ambient Reset": "ambient drone peaceful cleansing slow",
-        "Cinematic Tension": "dark tension strings suspense cinematic",
-        "Momentum": "upbeat energetic piano forward motion",
-        "Calm & Settle": "gentle calming ambient 396hz dog anxiety relief",
-        "Storm Shield": "steady masking ambient 432hz calm dog storms",
-        "Vet Ready": "ultra calm minimal 528hz soothing dog vet",
-        "New Place": "warm welcoming ambient 639hz dog comfort",
-        "Senior Comfort": "slow gentle foundation 174hz aging dog",
-        "Daily Calm": "balanced calm ambient 285hz dog daily",
-        "Purr Resonance": "deep healing 528hz feline purr resonance",
-        "Window Watch": "light alert calm 639hz cat observation",
-        "Settle & Sleep": "very slow sustained 432hz cat sleep",
-        "Vet Calm": "ultra minimal steady 396hz cat stress",
-        "Kitten Energy": "light gentle playful 639hz young cat",
-        "Senior Care": "very slow warm 174hz senior cat comfort",
-        "Dawn Awakening": "morning rising 285hz plant growth dawn",
-        "Growth Pulse": "steady rhythmic 200hz plant growth daily",
-        "Deep Root": "slow drone 174hz root development soil",
-        "Bloom Support": "bright warm 528hz flowering bloom plants",
-        "Seed Start": "gentle steady 396hz germination seedling",
-        "Dusk Wind-Down": "slowing calm 432hz plant evening cycle",
-        "Blank Verse": "minimal piano sparse poetic silence",
-        "Lyric Flow": "melodic piano lyrical flowing song",
-        "Dark Sonnet": "dark minor piano formal tension poem",
-        "Love Poem": "tender intimate piano vulnerable love",
-        "Spoken Word": "rhythmic percussion forward spoken word",
-        "Memory Poem": "hazy ambient memory nostalgic piano",
-        "Haiku Space": "extreme sparse silence minimal haiku zen",
-        "Elegy": "slow grief piano strings elegy loss",
-        "Celebration": "bright joyful piano uplifting celebration",
-        "Script Read": "neutral cinematic piano reading focus",
-        "Budget Build": "steady mathematical neutral ambient",
-        "Composition Flow": "harmonic open spacious piano composing",
-        "Scoring Session": "cinematic tension dark scoring film",
-        "Post Pipeline": "ambient neutral editorial background",
-        "Action / Thriller": "action thriller tension fast cinematic",
-        "Drama": "dramatic emotional cinematic strings piano",
-        "Horror": "dark horror dissonant strings dread tension",
-        "Romantic Comedy": "light romantic playful piano charming",
-        "Sci-Fi / Fantasy": "sci-fi atmospheric electronic epic ambient",
-        "Crime / Noir": "jazz noir dark saxophone moody",
-        "Prestige Drama": "slow burn dramatic piano strings",
-        "Western": "western acoustic guitar sparse ambient",
-        "Animation": "whimsical playful bright orchestral",
-        "True Crime": "procedural tension dark ambient",
-        "Comedy": "light comedic playful bright piano",
-        "Limited Series": "tension drama suspense cinematic",
-    }
-    textures = {
-        "Minimal Piano": "solo piano minimal sparse",
-        "Warm Analog": "warm analog synthesizer gentle",
-        "Ambient": "ambient drone atmospheric",
-        "Dark Drone": "dark drone sustained bass",
-        "Ethereal": "ethereal reverb floating",
-        "Cinematic": "cinematic orchestra strings",
-        "Orchestral Mist": "orchestral mist strings ambient",
-        "Textural Guitar": "guitar textural ambient",
-        "Electronic Pulse": "electronic pulse rhythm tension",
-        "Orchestral Swell": "orchestral swell strings building",
-        "Sparse Strings": "sparse strings dissonant minimal",
-        "Jazz Noir": "jazz noir saxophone piano",
-        "Ambient Score": "ambient score sparse silence",
-        "Propulsive Rhythm": "propulsive rhythm driving forward",
-        "Tender Theme": "tender melody emotional restraint",
-    }
-    scenes = {
-        "Chase / Action": "fast chase action propulsive",
-        "Confrontation": "tense confrontation dramatic",
-        "Quiet Moment": "quiet still intimate slow",
-        "The Reveal": "reveal dramatic shift",
-        "Romantic": "romantic slow intimate tender",
-        "Dark / Tense": "dark tense dread building",
-        "Comedic Beat": "comedic light timing playful",
-        "Montage": "montage forward motion",
-        "Opening": "opening establishing tone",
-        "Climax": "climax maximum stakes intense",
-        "Aftermath": "aftermath slow quiet",
-        "Exposition": "neutral informational background",
-    }
-    mode_p = base.get(mode, "ambient peaceful calm music")
-    texture_p = textures.get(texture, "ambient gentle")
+PROMPTS = {
+    "Deep Focus": "ambient piano minimal focus concentration seamless loop",
+    "Writing Flow": "gentle piano ambient flowing creative writing seamless loop",
+    "Scene Mood": "cinematic atmospheric emotional strings seamless loop",
+    "Emotional Access": "soft piano emotional intimate vulnerable seamless loop",
+    "Late-Night": "nocturnal ambient piano dark intimate seamless loop",
+    "Worldbuilding": "epic atmospheric ambient orchestral seamless loop",
+    "Idea Spark": "bright uplifting piano creative energetic seamless loop",
+    "Ambient Reset": "ambient drone peaceful cleansing slow seamless loop",
+    "Cinematic Tension": "dark tension strings suspense cinematic seamless loop",
+    "Momentum": "upbeat energetic piano forward motion seamless loop",
+    "Calm & Settle": "gentle calming ambient 396hz dog anxiety seamless loop",
+    "Storm Shield": "steady masking ambient 432hz calm dog seamless loop",
+    "Vet Ready": "ultra calm minimal 528hz soothing seamless loop",
+    "New Place": "warm welcoming ambient 639hz comfort seamless loop",
+    "Senior Comfort": "slow gentle foundation 174hz comfort seamless loop",
+    "Daily Calm": "balanced calm ambient 285hz daily seamless loop",
+    "Purr Resonance": "deep healing 528hz feline purr resonance seamless loop",
+    "Window Watch": "light alert calm 639hz observation seamless loop",
+    "Settle & Sleep": "very slow sustained 432hz sleep seamless loop",
+    "Vet Calm": "ultra minimal steady 396hz calm seamless loop",
+    "Kitten Energy": "light gentle playful 639hz young seamless loop",
+    "Senior Care": "very slow warm 174hz senior comfort seamless loop",
+    "Dawn Awakening": "morning rising 285hz plant growth dawn seamless loop",
+    "Growth Pulse": "steady rhythmic 200hz plant growth daily seamless loop",
+    "Deep Root": "slow drone 174hz root development seamless loop",
+    "Bloom Support": "bright warm 528hz flowering bloom seamless loop",
+    "Seed Start": "gentle steady 396hz germination seamless loop",
+    "Dusk Wind-Down": "slowing calm 432hz evening cycle seamless loop",
+}
+
+TEXTURES = {
+    "Minimal Piano": "solo piano minimal sparse",
+    "Warm Analog": "warm analog synthesizer gentle",
+    "Ambient": "ambient drone atmospheric",
+    "Dark Drone": "dark drone sustained bass",
+    "Ethereal": "ethereal reverb floating",
+    "Cinematic": "cinematic orchestra strings",
+    "Orchestral Mist": "orchestral mist strings ambient",
+    "Electronic Pulse": "electronic pulse rhythm tension",
+    "Orchestral Swell": "orchestral swell strings building",
+    "Sparse Strings": "sparse strings dissonant minimal",
+    "Jazz Noir": "jazz noir saxophone piano",
+    "Tender Theme": "tender melody emotional restraint",
+}
+
+SCENES = {
+    "Chase / Action": "fast chase action propulsive",
+    "Confrontation": "tense confrontation dramatic",
+    "Quiet Moment": "quiet still intimate slow",
+    "The Reveal": "reveal dramatic shift",
+    "Romantic": "romantic slow intimate tender",
+    "Dark / Tense": "dark tense dread building",
+    "Comedic Beat": "comedic light timing playful",
+    "Opening": "opening establishing tone",
+    "Climax": "climax maximum stakes intense",
+    "Aftermath": "aftermath slow quiet",
+}
+
+def make_prompt(mode, texture, genre=None, scene=None):
+    base = PROMPTS.get(mode, "ambient peaceful calm music seamless loop")
+    tex = TEXTURES.get(texture, "ambient gentle")
     if genre:
-        genre_p = base.get(genre, "cinematic")
-        scene_p = scenes.get(scene, "cinematic")
-        return f"{genre_p} {scene_p} {texture_p} seamless loop"
-    return f"{mode_p} {texture_p} seamless loop"
+        g = PROMPTS.get(genre, "cinematic seamless loop")
+        s = SCENES.get(scene, "cinematic")
+        return f"{g} {s} {tex}"
+    return f"{base} {tex}"
 
+class handler(BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self._cors()
+        self.end_headers()
 
-def handler(request):
-    if request.method == "OPTIONS":
-        return Response("", status=200, headers=cors_headers())
+    def do_POST(self):
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(n))
+        except Exception:
+            return self._err(400, "Invalid JSON")
 
-    try:
-        body = request.json()
-    except Exception:
-        return Response(json.dumps({"error": "Invalid JSON"}), status=400,
-                       content_type="application/json", headers=cors_headers())
+        mode = body.get("mode", "Deep Focus")
+        texture = body.get("texture", "Minimal Piano")
+        genre = body.get("genre")
+        scene = body.get("scene")
+        duration = min(int(body.get("duration", 30)), 60)
 
-    mode = body.get("mode", "Deep Focus")
-    texture = body.get("texture", "Minimal Piano")
-    genre = body.get("genre")
-    scene = body.get("scene")
-    duration = min(int(body.get("duration", 30)), 60)
+        key = hashlib.md5(f"{mode}:{texture}:{genre}:{scene}:{duration}".encode()).hexdigest()
+        if key in _cache:
+            return self._audio(_cache[key])
 
-    key = hashlib.md5(f"{mode}:{texture}:{genre}:{scene}:{duration}".encode()).hexdigest()
-    if key in _cache:
-        return Response(_cache[key], status=200, content_type="audio/flac",
-                       headers={**cors_headers(), "Cache-Control": "public, max-age=3600"})
+        if not HF_TOKEN:
+            return self._err(500, "HUGGINGFACE_API_TOKEN not set")
 
-    if not HF_TOKEN:
-        return Response(json.dumps({"error": "HUGGINGFACE_API_TOKEN not configured"}),
-                       status=500, content_type="application/json", headers=cors_headers())
+        prompt = make_prompt(mode, texture, genre, scene)
+        try:
+            r = requests.post(
+                HF_URL,
+                headers={"Authorization": f"Bearer {HF_TOKEN}"},
+                json={"inputs": prompt, "parameters": {"max_new_tokens": duration * 50}},
+                timeout=120,
+            )
+        except requests.Timeout:
+            return self._err(504, "Timeout — retry in 30s")
+        except Exception as e:
+            return self._err(500, str(e))
 
-    prompt = build_prompt(mode, texture, genre, scene)
-    try:
-        resp = requests.post(
-            HF_API_URL,
-            headers={"Authorization": f"Bearer {HF_TOKEN}"},
-            json={"inputs": prompt, "parameters": {"max_new_tokens": duration * 50}},
-            timeout=120,
-        )
-    except requests.Timeout:
-        return Response(json.dumps({"error": "MusicGen timed out — retry in 30s"}),
-                       status=504, content_type="application/json", headers=cors_headers())
-    except Exception as e:
-        return Response(json.dumps({"error": str(e)}),
-                       status=500, content_type="application/json", headers=cors_headers())
+        if r.status_code == 503:
+            return self._err(503, "Model loading — retry in 20s")
+        if r.status_code != 200:
+            return self._err(r.status_code, f"HF error: {r.text[:200]}")
 
-    if resp.status_code == 503:
-        return Response(json.dumps({"error": "Model loading — retry in 20s"}),
-                       status=503, content_type="application/json", headers=cors_headers())
-    if resp.status_code != 200:
-        return Response(json.dumps({"error": f"HF error {resp.status_code}"}),
-                       status=resp.status_code, content_type="application/json", headers=cors_headers())
+        _cache[key] = r.content
+        self._audio(r.content)
 
-    _cache[key] = resp.content
-    return Response(resp.content, status=200, content_type="audio/flac",
-                   headers={**cors_headers(), "Cache-Control": "public, max-age=3600"})
+    def _audio(self, data):
+        self.send_response(200)
+        self._cors()
+        self.send_header("Content-Type", "audio/flac")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "public, max-age=3600")
+        self.end_headers()
+        self.wfile.write(data)
 
+    def _err(self, code, msg):
+        body = json.dumps({"error": msg}).encode()
+        self.send_response(code)
+        self._cors()
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
-def cors_headers():
-    return {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-    }
-
-
-class Response:
-    def __init__(self, body, status=200, content_type="text/plain", headers=None):
-        self.body = body
-        self.status_code = status
-        self.content_type = content_type
-        self.headers = headers or {}
+    def _cors(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
