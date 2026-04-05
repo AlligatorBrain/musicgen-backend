@@ -3,7 +3,6 @@
   "name": "musicgen-backend",
   "functions": {
     "api/generate.py": {
-      "runtime": "python3.9",
       "maxDuration": 120
     }
   },
